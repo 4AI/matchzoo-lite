@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import os
 import shutil
-
 import numpy as np
 import pytest
-
 import matchzoo as mz
 
-corpus_dir = "./corpus"
+corpus_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "corpus")
 
 @pytest.fixture(scope='module')
 def train_data():
