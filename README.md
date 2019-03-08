@@ -31,13 +31,19 @@
 
 MatchZoo is dependent on [Keras](https://github.com/keras-team/keras), please install one of its backend engines: TensorFlow, Theano, or CNTK. We recommend the TensorFlow backend. Two ways to install MatchZoo:
 
-**Install matchzoo-lite from the Github source:**
+### Install matchzoo-lite from the Github source
 
 ```
 git clone http://gitlab.alipay-inc.com/niming.lxm/matchzoo-lite.git
 cd matchzoo-lite
 python setup.py install
 ```
+### Docker
+
+```
+docker pull seanlee97/matchzoo-lite:latest
+```
+
 
 ## Train your model
 - [train_duet.py](http://gitlab.alipay-inc.com/niming.lxm/matchzoo-lite/blob/master/examples/train_duet.py)
