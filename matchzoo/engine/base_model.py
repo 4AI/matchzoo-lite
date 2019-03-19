@@ -105,7 +105,7 @@ class BaseModel(abc.ABC):
                 desc='Should be set manually.'
             ))
             params.add(engine.Param(
-                name='embedding_trainable', value=True,
+                name='embedding_trainable', value=False,
                 desc='`True` to enable embedding layer training, '
                      '`False` to freeze embedding parameters.'
             ))
