@@ -1,10 +1,17 @@
 import io
 import os
-
+import sys
+import subprocess
 from setuptools import setup, find_packages
 
 
 here = os.path.abspath(os.path.dirname(__file__))
+
+PUBLISH_CMD = 'python setup.py register sdist upload'
+
+if 'publish' in sys.argv:
+    status = subprocess.call(PUBLISH_CMD, shell=True)
+    sys.exit(status)
 
 # Avoids IDE errors, but actual version is read from version.py
 __version__ = None
@@ -42,10 +49,10 @@ extras_requires = {
 
 
 setup(
-    name="MatchZoo-Lite",
+    name="matchzoo-lite",
     version=__version__,
     author="Sean Lee",
-    author_email="niming.lxm",
+    author_email="xmlee@gmail.com",
     description=(short_description),
     license="Apache 2.0",
     keywords="text matching models based on https://github.com/NTMC-Community/MatchZoo",
