@@ -1,17 +1,11 @@
-"""An implementation of CNN-Highway(毕设提出的网络) Model.
-
-Author: niming.lxm@antfin.com
-"""
-
+"""An implementation of Conv-Highway Model."""
 import typing
 
-import tensorflow as tf
 import keras
 from keras import backend as K
 
 from matchzoo import engine
 from matchzoo import preprocessors
-
 
 class ConvHighway(engine.BaseModel):
     """
@@ -19,12 +13,12 @@ class ConvHighway(engine.BaseModel):
 
     Examples:
         >>> model = ConvHighway()
-        >>> model.params['num_blocks'] = 1
         >>> model.params['encode_filters'] = 128
         >>> model.params['encode_kernel_sizes'] = [3, 4, 5]
         >>> model.params['decode_filters'] = 128
-        >>> model.params['decode_kernel_sizes'] = [3, 3]
+        >>> model.params['decode_kernel_size'] = 3
         >>> model.params['conv_activation_func'] = 'relu'
+        >>> model.params['pool_size'] = 2
         >>> model.params['mlp_num_layers'] = 1
         >>> model.params['mlp_num_units'] = 200
         >>> model.params['mlp_num_fan_out'] = 100
@@ -43,8 +37,6 @@ class ConvHighway(engine.BaseModel):
             with_multi_layer_perceptron=True
         )
         params['optimizer'] = 'adam'
-        params.add(engine.Param(name='num_blocks', value=1,
-                                desc="Number of convolution blocks."))
         params.add(engine.Param(name='encode_filters', value=128,
                                 desc="The filter size of each convolution "
                                      "blocks for encode."))
@@ -54,12 +46,15 @@ class ConvHighway(engine.BaseModel):
         params.add(engine.Param(name='decode_filters', value=128,
                                 desc="The filter size of each convolution "
                                      "blocks for decode."))
-        params.add(engine.Param(name='decode_kernel_sizes', value=[3],
+        params.add(engine.Param(name='decode_kernel_size', value=3,
                                 desc="The kernel size of each convolution "
                                      "blocks for the decode."))
         params.add(engine.Param(name='conv_activation_func', value='relu',
                                 desc="The activation function in the "
                                      "convolution layer."))
+        params.add(engine.Param(name='pool_size', value=4,
+                                desc="pool size of max pooling"
+                                     "pool size of max pooling"))
         params.add(engine.Param(
             name='padding',
             value='same',
@@ -80,12 +75,12 @@ class ConvHighway(engine.BaseModel):
         """
         Build model structure.
 
-        CNN-Highway use Siamese arthitecture.
+        ConvHighway use Siamese arthitecture.
         """
         input_left, input_right = self._make_inputs()
 
-        mask_left = K.cast(input_left, tf.bool)
-        mask_right = K.cast(input_right, tf.bool)
+        mask_left = keras.layers.Lambda(lambda x: K.cast(x, K.tf.bool))(input_left)
+        mask_right = keras.layers.Lambda(lambda x: K.cast(x, K.tf.bool))(input_right)
 
         embedding = self._make_embedding_layer()
         embed_left = embedding(input_left)
@@ -108,51 +103,25 @@ class ConvHighway(engine.BaseModel):
         )
 
         attention_layer = keras.layers.Lambda(ConvHighway.bi_attention)
-        left2right, right2left = attention_layer([encode_left, encode_right, mask_left, mask_right])
-
-        concat = keras.layers.Concatenate(axis=-1)([encode_left,
-                                                    encode_right,
-                                                    keras.layers.Multiply()([encode_left, left2right]),
-                                                    keras.layers.Multiply()([encode_right, right2left])])
+        attn = attention_layer([encode_left, encode_right, mask_left, mask_right])
         # decode
-        decode = self._conv_highway_block(
-            concat,
+        decode = self._conv_pool_block(
+            attn,
             self._params['decode_filters'],
-            self._params['decode_kernel_sizes'],
+            self._params['decode_kernel_size'],
             self._params['padding'],
-            self._params['conv_activation_func']
+            self._params['conv_activation_func'],
+            self._params['pool_size']
         )
-        fuse = K.squeeze(keras.layers.Dense(1)(decode), axis=-1)
+        output = keras.layers.Flatten()(decode)
         dropout = keras.layers.Dropout(
-            rate=self._params['dropout_rate'])(fuse)
+            rate=self._params['dropout_rate'])(output)
         mlp = self._make_multi_layer_perceptron_layer()(dropout)
 
         inputs = [input_left, input_right]
         x_out = self._make_output_layer()(mlp)
         self._backend = keras.Model(inputs=inputs, outputs=x_out)
 
-    @staticmethod
-    def bi_attention(
-        tensors: typing.Any
-    ) -> typing.Any:
-        p_enc, q_enc, p_mask, q_mask = tensors
-        score = ConvHighway.bilinear(p_enc, q_enc)
-        q_mask_ex = K.expand_dims(q_mask, 1) # batch x 1 x q_len
-        p_mask_ex = K.expand_dims(p_mask, 1) # batch x 1 x p_len
-        
-        score_ = K.softmax(
-            K.expand_dims(
-                K.max(
-                    ConvHighway.mask_logits(score, mask=p_mask_ex), axis=1), axis=1), -1) # batch x 1 x p_len
-        score_t = K.softmax(
-            ConvHighway.mask_logits(
-                keras.layers.Permute(dims=(2, 1))(score), mask=q_mask_ex)
-        ) # batch x p_len x q_len
-        p2q = K.batch_dot(score_, p_enc) # batch x 1 x embedding_size
-        q2p = K.batch_dot(score_t, q_enc) # batch x p_len x embedding_size
-
-        return (p2q, q2p)
-    
     def _conv_pool_block(
         self,
         input_: typing.Any,
@@ -170,47 +139,70 @@ class ConvHighway(engine.BaseModel):
         )(input_)
         output = keras.layers.MaxPooling1D(pool_size=pool_size)(output)
         return output
-
+        
     def _conv_highway_block(
         self,
-        inputs: typing.Any,
+        input_: typing.Any,
         filters: int,
         kernel_sizes: list,
         padding: str,
         conv_activation_func: str,
     ) -> typing.Any:
-        inputs = keras.layers.Dense(filters)(inputs)
+        inputs = keras.layers.Dense(filters)(input_)
         shortconn = inputs
-
         for kidx, kernel_size in enumerate(kernel_sizes, 1):
-            if kidx %2 == 0:
-                inputs += shortconn
+            if kidx % 2 == 0:
+                inputs = keras.layers.Add()([inputs, shortconn])
                 shortconn = inputs
-                continue
-            H = keras.layers.Conv1D(
-                filters,
-                kernel_size,
-                padding=padding,
-                activation=conv_activation_func
-            )(inputs)
-            T = keras.layers.Conv1D(
-                filters,
-                kernel_size,
-                padding=padding,
-                activation=conv_activation_func
-            )(inputs)
-            inputs = H * T + inputs * (1.0 - T)
-
+            else:
+                H = keras.layers.Conv1D(
+                    filters,
+                    kernel_size,
+                    padding=padding,
+                    activation=conv_activation_func
+                )(inputs)
+                T = keras.layers.Conv1D(
+                    filters,
+                    kernel_size,
+                    padding=padding,
+                    activation='sigmoid'
+                )(inputs)
+                inputs = keras.layers.Add()([
+                    keras.layers.Multiply()([H, T]),
+                    keras.layers.Multiply()([inputs, keras.layers.Lambda(lambda x: 1.0-x)(T)])
+                ])
         return inputs
+
+    @staticmethod
+    def bi_attention(
+        tensors: typing.Any
+    ) -> typing.Any:
+        p_enc, q_enc, p_mask, q_mask = tensors
+        score = ConvHighway.bilinear(p_enc, q_enc)
+        q_mask_ex = K.expand_dims(q_mask, 1) # batch x 1 x q_len
+        p_mask_ex = K.expand_dims(p_mask, 1) # batch x 1 x p_len
+        
+        score_ = K.softmax(
+            K.expand_dims(
+                K.tf.reduce_max(
+                    ConvHighway.mask_logits(score, p_mask_ex), axis=1), axis=1), -1) # batch x 1 x p_len
+        #score_x = K.tf.tile(score_, [1, K.tf.shape(p_enc)[1], 1])
+        score_t = K.softmax(
+            ConvHighway.mask_logits(K.tf.transpose(score, (0, 2, 1)), q_mask_ex)
+        ) # batch x p_len x q_len
+        p2q = K.batch_dot(score_, p_enc) # batch x 1 x embedding_size
+        q2p = K.batch_dot(score_t, q_enc) # batch x p_len x embedding_size
+
+        concat = K.tf.concat([p_enc, q2p, p_enc*p2q, p_enc*q2p], axis=-1)
+        return concat
 
     @staticmethod
     def mask_logits(
         inputs: typing.Any,
-        mask: typing.Any,
-        mask_value: float=-1e30
+        mask: typing.Any
     ) -> typing.Any:
-        mask = K.cast(mask, tf.float32)
-        return inputs * mask + mask_value * (1. - mask)
+        mask = K.cast(mask, K.tf.float32)
+        return inputs * mask + 1e-12 * (1. - mask)
 
     @staticmethod
     def bilinear(
@@ -225,11 +217,12 @@ class ConvHighway(engine.BaseModel):
         Ouput: 
             (batch_size, p_len, q_len)
         """
-        p = keras.layers.Permute(dims=(2, 1))(p_enc)
-        hidden_dim = q_enc.get_shape()[-1]
-        attn_W = tf.get_variable("AttnW",
-                            shape=[hidden_dim, hidden_dim],
-                            dtype=tf.float32)
-        w_q = K.dot(q_enc, attn_W)
+        p = K.tf.transpose(p_enc, (0, 2, 1))
+        with K.tf.variable_scope("attn_weight", reuse=K.tf.AUTO_REUSE):
+            hidden_dim = q_enc.get_shape()[-1]
+            attn_W = K.tf.get_variable("AttnW",
+                                shape=[hidden_dim, hidden_dim],
+                                dtype=K.tf.float32)
+            w_q = K.dot(q_enc, attn_W)
         out = K.batch_dot(w_q, p)  # batch x q_len x p_len
         return out
