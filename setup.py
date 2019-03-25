@@ -15,7 +15,7 @@ if 'publish' in sys.argv:
 
 # Avoids IDE errors, but actual version is read from version.py
 __version__ = None
-exec(open('matchzoo/version.py').read())
+exec(open('matchzoo/version.py').read()) 
 
 short_description = 'Facilitating the design, comparison and sharing of deep text matching models. Based on MatchZoo'
 
@@ -23,19 +23,8 @@ short_description = 'Facilitating the design, comparison and sharing of deep tex
 with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-install_requires = [
-    'keras >= 2.2.4',
-    'nltk >= 3.2.3',
-    'numpy >= 1.14',
-    'scikit-learn >= 0.20.2',
-    'tensorflow >= 1.8.0,< 2.0.0',
-    'tqdm >= 4.19.4',
-    'dill >= 0.2.7.1',
-    'pandas >= 0.23.1',
-    'networkx >= 2.1',
-    'h5py >= 2.8.0',
-    'hyperopt >= 0.1.1',
-]
+with open('requirements.txt') as f:
+    install_requires = [l.strip() for l in f if l.strip()]
 
 extras_requires = {
     'tests': [
