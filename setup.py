@@ -23,7 +23,7 @@ short_description = 'Facilitating the design, comparison and sharing of deep tex
 with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-with open('requirements.txt') as f:
+with open(os.path.join(here, 'requirements.txt')) as f:
     install_requires = [l.strip() for l in f if l.strip()]
 
 extras_requires = {
