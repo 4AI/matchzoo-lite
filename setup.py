@@ -23,8 +23,19 @@ short_description = 'Facilitating the design, comparison and sharing of deep tex
 with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-with open(os.path.join(here, 'requirements.txt')) as f:
-    install_requires = [l.strip() for l in f if l.strip()]
+install_requires = [
+    'keras >= 2.2.4',
+    'tensorflow >= 1.8.0,< 2.0.0',
+    'scikit-learn >= 0.20.2',
+    'nltk >= 3.2.3',
+    'numpy >= 1.14',
+    'tqdm >= 4.19.4',
+    'dill >= 0.2.7.1',
+    'hyperopt >= 0.1.1',
+    'pandas >= 0.23.1',
+    'networkx >= 2.1',
+    'h5py >= 2.8.0'
+]
 
 extras_requires = {
     'tests': [
@@ -60,4 +71,3 @@ setup(
     install_requires=install_requires,
     extras_require=extras_requires
 )
-
